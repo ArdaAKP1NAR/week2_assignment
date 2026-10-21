@@ -19,12 +19,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.week2.ui.theme.Week2_assignmentTheme
 
-// ============================================================================
-// A. VERİ KATMANI (DATA LAYER) VE DERLEYİCİ SÖZLEŞMESİ
-// ============================================================================
-// • Değişmezlik (Immutability): Tüm alanlar 'val' ile tanımlanarak Race Condition engellenir.
-// • Kararlılık Sözleşmesi: Compose derleyicisinin Akıllı Atlama (Smart Recomposition Skipping)
-//   motorunu tetiklemek için @Immutable anotasyonu kullanılmıştır.
+// Donanım item modeli. Tüm alanları val yaptım ve @Immutable ekledim ki
+// Compose derleyicisi gereksiz recomposition yapmayıp akıllıca atlama yapabilsin.
 @Immutable
 data class HardwareItem(
     val id: String,
@@ -50,12 +46,10 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// ============================================================================
-// B & D. STATEFUL ANA KAPSAYICI (STATE HOISTING MERKEZİ)
-// ============================================================================
+// Ana stateful ekran bileşeni. Bütün durumları (state) burada yönetiyorum (State Hoisting).
 @Composable
 fun DevClusterApp(modifier: Modifier = Modifier) {
-    // Sabit Veri Kümesi (Ödev Şartnamesindeki Test Verisi)
+    // Şartnamede verilen başlangıç test verileri
     val initialList = remember {
         listOf(
             HardwareItem(id = "101", name = "MacBook Pro M3 Max", category = "Geliştirici Bilgisayarı", cost = 3499.0, stockCount = 5),
@@ -64,25 +58,23 @@ fun DevClusterApp(modifier: Modifier = Modifier) {
             HardwareItem(id = "104", name = "Dell UltraSharp 49\"", category = "Monitör", cost = 1199.0, stockCount = 4),
             HardwareItem(id = "105", name = "Sony WH-1000XM5 Kulaklık", category = "Odaklanma Ekipmanı", cost = 399.0, stockCount = 12),
             HardwareItem(id = "106", name = "Raspberry Pi 5 8GB", category = "IoT Geliştirme Kiti", cost = 85.0, stockCount = 25),
-            HardwareItem(id = "107", name = "HHKB Professional Keyboard", category = "Ergonomik Klavye", cost = 299.0, stockCount = 0), // Stok sınırı test verisi
+            HardwareItem(id = "107", name = "HHKB Professional Keyboard", category = "Ergonomik Klavye", cost = 299.0, stockCount = 0), // Stok sınırı testi
             HardwareItem(id = "108", name = "AMD Ryzen Threadripper", category = "Yapay Zeka / GPU", cost = 4999.0, stockCount = 1)
         )
     }
 
-    // İŞ 2: Dinamik Stok Yönetimi State'i (rememberSaveable KULLANILMADI)
+    // Tıklayınca stokların düşmesi için liste durumunu burada tutuyorum.
+    // HardwareItem Parcelable olmadığı için crash vermesin diye remember kullandım.
     var items by remember { mutableStateOf(initialList) }
 
-    // B. Konfigürasyon Değişim Koruması:
-    // Cihaz döndürüldüğünde (Portrait -> Landscape) arama metni RAM dışı geçici Bundle alanında muhafaza edilir.
+    // Ekranı yan çevirince (rotate) aranan metin silinmesin diye rememberSaveable kullandım.
     var searchQuery by rememberSaveable { mutableStateOf("") }
 
-    // B. Çalışma Zamanı Hafıza Kilidi:
-    // Harcanan ödenek miktarı Compose'un Slot Table yapısına 'remember' makrosu ile kilitlenmiştir.
+    // Harcanan ödenek miktarını Compose'un Slot Table yapısına kilitliyorum.
     var totalBudgetSpent by remember { mutableDoubleStateOf(0.0) }
 
-    // B. Turnike Mantığı (Memoization):
-    // Arama ve filtreleme algoritması 'remember(searchQuery, items)' önbellek filtresi arkasındadır.
-    // Recomposition esnasında boş yere CPU tüketmez, sadece searchQuery veya items değiştiğinde yeniden hesaplanır.
+    // Turnike Mantığı (Memoization): Her recomposition'da filtreyi gereksiz yere çalıştırmayıp
+    // sadece searchQuery veya items değiştiğinde CPU harcaması için remember içine aldım.
     val filteredList = remember(searchQuery, items) {
         if (searchQuery.isBlank()) {
             items
@@ -99,7 +91,7 @@ fun DevClusterApp(modifier: Modifier = Modifier) {
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        // Başlık ve Ödenek Özet Kartı
+        // Ödenek özet kartı
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer
@@ -126,7 +118,7 @@ fun DevClusterApp(modifier: Modifier = Modifier) {
             }
         }
 
-        // D. Stateless Arama Çubuğu (State Down, Event Up)
+        // Stateless Arama Çubuğu. State yukarıdan gidiyor, yazılan metin lambda ile yukarı geliyor.
         HardwareSearchBar(
             query = searchQuery,
             onQueryChanged = { newQuery -> searchQuery = newQuery }
@@ -134,7 +126,7 @@ fun DevClusterApp(modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // C. Liste Mimarisi (LazyColumn ve Key Parametresi)
+        // Donanım Listesi. Tembel yükleme için LazyColumn ve nokta atışı recomposition için key kullandım.
         if (filteredList.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -155,13 +147,13 @@ fun DevClusterApp(modifier: Modifier = Modifier) {
             ) {
                 items(
                     items = filteredList,
-                    key = { item -> item.id } // Nokta Atışı Recomposition için benzersiz kimlik (id)
+                    key = { item -> item.id } // Nokta Atışı Recomposition için id verdim
                 ) { item ->
-                    // D. Stateless Donanım Kartı
+                    // Stateless Kart bileşeni
                     HardwareCard(
                         item = item,
                         onCardClick = { clickedItem ->
-                            // İŞ 2: Stok azaltma ve ödenek güncelleme mantığı
+                            // Stok kontrolü yapıp bütçeyi arttırıyorum ve ilgili ürünün stok sayısını 1 düşürüyorum
                             if (clickedItem.stockCount > 0) {
                                 totalBudgetSpent += clickedItem.cost
                                 items = items.map {
@@ -176,11 +168,7 @@ fun DevClusterApp(modifier: Modifier = Modifier) {
     }
 }
 
-// ============================================================================
-// D. SAF FONKSİYON TASARIMI - STATELESS ARAMA ÇUBUĞU
-// ============================================================================
-// Ekranda yerel hiçbir 'remember' hücresi barındırmaz.
-// Durumu dışarıdan alır (query), değişiklik olayını yukarı fırlatır (onQueryChanged).
+// Arama Çubuğu (Stateless). İçinde hiçbir remember veya local state yok.
 @Composable
 fun HardwareSearchBar(
     query: String,
@@ -207,11 +195,8 @@ fun HardwareSearchBar(
     )
 }
 
-// ============================================================================
-// D. SAF FONKSİYON TASARIMI - STATELESS DONANIM KARTI
-// ============================================================================
-// Ekranda yerel hiçbir 'remember' hücresi barındırmaz.
-// D. Modifier Sıralaması: Önce .clickable(), ardından .padding() uygulanmıştır.
+// Donanım Kartı (Stateless).
+// Görsel margin hatalarının önüne geçmek için modifier sıralamasında .clickable()'ı .padding()'den önce yazdım.
 @Composable
 fun HardwareCard(
     item: HardwareItem,
@@ -227,8 +212,7 @@ fun HardwareCard(
         ),
         modifier = Modifier
             .fillMaxWidth()
-            // D. MODIFIER SIRALAMASI KURALI:
-            // Önce .clickable(), ardından .padding() hiyerarşisi işletilmiştir.
+            // Modifier sıralaması kuralı: Önce .clickable(), sonra .padding()
             .clickable(enabled = isAvailable) { onCardClick(item) }
             .padding(horizontal = 4.dp, vertical = 2.dp)
     ) {
@@ -249,7 +233,7 @@ fun HardwareCard(
                     modifier = Modifier.weight(1f)
                 )
 
-                // Stok Durumu Rozeti (Badge)
+                // Stok rozeti
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = if (isAvailable) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer
@@ -284,9 +268,6 @@ fun HardwareCard(
     }
 }
 
-// ============================================================================
-// PREVIEW BİLEŞENLERİ
-// ============================================================================
 @Preview(showBackground = true)
 @Composable
 fun DevClusterAppPreview() {
